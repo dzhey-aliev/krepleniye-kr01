@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Крепление системного блока</title>
+<style>
+:root{
+  --bg:#eef1f6; --panel:#ffffff; --line:#d5dde6; --tx:#16202b; --tx2:#5c6d80;
+  --acc:#0d63c9; --btn:#f2f5f9; --btnBd:#cfd8e3; --btnOnBg:#0d63c9; --btnOnTx:#ffffff;
+  --rowHi:#e8f0fb; --shadow:0 1px 3px rgba(20,35,55,.10);
+}
+body.dark{
+  --bg:#0b0f15; --panel:#121821; --line:#27323f; --tx:#c9d6e4; --tx2:#7f8fa3;
+  --acc:#4cc2ff; --btn:#1b2431; --btnBd:#2b3746; --btnOnBg:#12435e; --btnOnTx:#d8f2ff;
+  --rowHi:#1a2735; --shadow:none;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--tx);font:13px/1.5 "Segoe UI",Roboto,system-ui,sans-serif;overflow:hidden}
+#app{position:fixed;inset:0;display:flex}
+#stage{position:relative;flex:1;min-width:0}
+canvas{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
+canvas.rot{cursor:grabbing}
+canvas.mov{cursor:move}
+#svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#hud{position:absolute;left:16px;bottom:12px;font:11px/1.5 Consolas,monospace;color:var(--tx2);pointer-events:none}
+#title{position:absolute;left:18px;top:14px;pointer-events:none}
+#title h1{margin:0;font-size:19px;font-weight:650;letter-spacing:.2px}
+#title p{margin:2px 0 0;font:11px/1.4 Consolas,monospace;color:var(--tx2)}
+#panel{width:300px;flex:0 0 300px;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
+#panel .sec{padding:12px 14px;border-bottom:1px solid var(--line)}
+#panel h2{margin:0 0 8px;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--tx2);font-weight:700}
+.btns{display:flex;flex-wrap:wrap;gap:5px}
+button{background:var(--btn);color:var(--tx);border:1px solid var(--btnBd);border-radius:5px;
+  padding:5px 9px;font:13px "Segoe UI",sans-serif;cursor:pointer;transition:.12s;box-shadow:var(--shadow)}
+button:hover{border-color:var(--acc)}
+button.on{background:var(--btnOnBg);border-color:var(--btnOnBg);color:var(--btnOnTx)}
+.chk{display:flex;align-items:center;gap:8px;padding:3px 0;cursor:pointer;user-select:none}
+.chk input{accent-color:var(--acc);width:14px;height:14px;cursor:pointer}
+.sw{width:9px;height:9px;border-radius:2px;flex:0 0 9px}
+#list{flex:1;overflow-y:auto;padding:6px 0 20px}
+#list::-webkit-scrollbar{width:9px}
+#list::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px}
+.grp{padding:10px 14px 3px;font:11px/1 Consolas,monospace;letter-spacing:1px;text-transform:uppercase}
+.row{display:flex;justify-content:space-between;gap:10px;padding:4px 14px;cursor:default;border-left:2px solid transparent}
+.row:hover{background:var(--rowHi);border-left-color:var(--acc)}
+.row .k{color:var(--tx2)}
+.row .v{font:13px Consolas,monospace;color:var(--tx);white-space:nowrap}
+.note{padding:8px 14px 4px;font-size:11px;color:var(--tx2);line-height:1.65}
+.kbd{font:11px Consolas,monospace;background:var(--btn);border:1px solid var(--btnBd);border-radius:3px;padding:1px 5px;color:var(--tx)}
+#toggle{display:none}
+@media(max-width:820px){
+  #panel{position:absolute;right:0;top:0;bottom:0;z-index:5;transform:translateX(100%);transition:.2s;box-shadow:-8px 0 24px rgba(0,0,0,.18)}
+  #panel.open{transform:none}
+  #toggle{display:block;position:absolute;right:12px;top:12px;z-index:6}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div id="title">
+      <h1>Крепление с рёбрами — сварная сборка</h1>
+      <p>лист s5 · габарит 470 × 275 × 590 мм · 9 деталей</p>
+    </div>
+    <div id="hud">ЛКМ — поворот · ПКМ / СКМ / Shift+ЛКМ — сдвиг · колесо — зум к курсору</div>
+    <button id="toggle">≡</button>
+  </div>
+
+  <aside id="panel">
+    <div class="sec">
+      <h2>Вид</h2>
+      <div class="btns">
+        <button data-view="iso">Изометрия</button>
+        <button data-view="front">Спереди</button>
+        <button data-view="back">Сзади</button>
+        <button data-view="side">Сбоку</button>
+        <button data-view="top">Сверху</button>
+        <button id="bFit">Вписать</button>
+      </div>
+    </div>
+    <div class="sec">
+      <h2>Отображение</h2>
+      <div class="btns">
+        <button id="bTheme">Тёмная тема</button>
+        <button id="bRibs" class="on">Рёбра</button>
+        <button id="bEdges">Кромки</button>
+        <button id="bGhost">Прозрачно</button>
+        <button id="bGrid" class="on">Сетка</button>
+        <button id="bSpin">Вращение</button>
+      </div>
+    </div>
+    <div class="sec">
+      <h2>Размерные группы</h2>
+      <label class="chk"><input type="checkbox" data-g="overall"><span class="sw" id="sw-overall"></span>Габариты</label>
+      <label class="chk"><input type="checkbox" data-g="base"><span class="sw" id="sw-base"></span>Основание</label>
+      <label class="chk"><input type="checkbox" data-g="wall"><span class="sw" id="sw-wall"></span>Стенки / арка</label>
+      <label class="chk"><input type="checkbox" data-g="top"><span class="sw" id="sw-top"></span>Стойки и полки</label>
+      <label class="chk"><input type="checkbox" data-g="rib"><span class="sw" id="sw-rib"></span>Рёбра (сварка)</label>
+    </div>
+    <div id="list"></div>
+  </aside>
+</div>
+
+<script>
+/* =========================================================================
+   «крепление с ребрами сварка.step» (Shapr3D, AP242) — 9 тел:
+   основная гнутая деталь s5 + 4 вертикальных ребра 5×15 + 4 горизонтальных 5×15.
+   СК: X — длина 0..470, Y — глубина 0..275 (с рёбрами), Z — высота 0..590.
+   ========================================================================= */
+
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const nrm=a=>{const l=Math.hypot(a[0],a[1],a[2])||1;return[a[0]/l,a[1]/l,a[2]/l];};
+const scl=(a,s)=>[a[0]*s,a[1]*s,a[2]*s];
+const M4={
+  mul(a,b){const o=new Float32Array(16);
+    for(let i=0;i<4;i++)for(let j=0;j<4;j++){let s=0;for(let k=0;k<4;k++)s+=a[k*4+j]*b[i*4+k];o[i*4+j]=s;}
+    return o;},
+  persp(f,ar,n,fa){const t=1/Math.tan(f/2),o=new Float32Array(16);
+    o[0]=t/ar;o[5]=t;o[10]=(fa+n)/(n-fa);o[11]=-1;o[14]=2*fa*n/(n-fa);return o;},
+  look(e,c,u){const z=nrm(sub(e,c)),x=nrm(cross(u,z)),y=cross(z,x);
+    return new Float32Array([x[0],y[0],z[0],0, x[1],y[1],z[1],0, x[2],y[2],z[2],0,
+      -dot(x,e),-dot(y,e),-dot(z,e),1]);}
+};
+
+/* ---------------- 2D профили ---------------- */
+function roundPoly(pts,seg){
+  seg=seg||10;const out=[],n=pts.length;
+  for(let i=0;i<n;i++){
+    const P=pts[i],A=pts[(i-1+n)%n],B=pts[(i+1)%n],r=P[2]||0;
+    if(!r){out.push([P[0],P[1]]);continue;}
+    let u1=[A[0]-P[0],A[1]-P[1]],u2=[B[0]-P[0],B[1]-P[1]];
+    const l1=Math.hypot(u1[0],u1[1]),l2=Math.hypot(u2[0],u2[1]);
+    u1=[u1[0]/l1,u1[1]/l1];u2=[u2[0]/l2,u2[1]/l2];
+    const ct=Math.max(-1,Math.min(1,u1[0]*u2[0]+u1[1]*u2[1]));
+    const th=Math.acos(ct),d=r/Math.tan(th/2),h=r/Math.sin(th/2);
+    const T1=[P[0]+u1[0]*d,P[1]+u1[1]*d];
+    const T2=[P[0]+u2[0]*d,P[1]+u2[1]*d];
+    const bi=[u1[0]+u2[0],u1[1]+u2[1]],bl=Math.hypot(bi[0],bi[1])||1;
+    const C=[P[0]+bi[0]/bl*h,P[1]+bi[1]/bl*h];
+    const a1=Math.atan2(T1[1]-C[1],T1[0]-C[0]);
+    const a2=Math.atan2(T2[1]-C[1],T2[0]-C[0]);
+    let da=a2-a1;
+    while(da>Math.PI)da-=2*Math.PI;
+    while(da<-Math.PI)da+=2*Math.PI;
+    for(let s=0;s<=seg;s++){const a=a1+da*s/seg;out.push([C[0]+Math.cos(a)*r,C[1]+Math.sin(a)*r]);}
+  }
+  return out;
+}
+const HSEG=32;
+function circle(cx,cy,r,n){
+  const o=[];for(let i=0;i<n;i++){const a=2*Math.PI*i/n;o.push([cx+Math.cos(a)*r,cy+Math.sin(a)*r]);}
+  return o;
+}
+function arcPts(cx,cy,r,d0,d1,seg){
+  const o=[];
+  for(let i=0;i<=seg;i++){const a=(d0+(d1-d0)*i/seg)*Math.PI/180;o.push([cx+Math.cos(a)*r,cy+Math.sin(a)*r]);}
+  return o;
+}
+function area2(p){let s=0;for(let i=0;i<p.length;i++){const a=p[i],b=p[(i+1)%p.length];s+=a[0]*b[1]-b[0]*a[1];}return s/2;}
+function ptInTri(p,a,b,c){
+  const d=(b[1]-c[1])*(a[0]-c[0])+(c[0]-b[0])*(a[1]-c[1]);
+  if(Math.abs(d)<1e-12)return false;
+  const u=((b[1]-c[1])*(p[0]-c[0])+(c[0]-b[0])*(p[1]-c[1]))/d;
+  const v=((c[1]-a[1])*(p[0]-c[0])+(a[0]-c[0])*(p[1]-c[1]))/d;
+  const w=1-u-v,e=1e-9;
+  return u>e&&v>e&&w>e;
+}
+function earClip(poly){
+  const idx=[];for(let i=0;i<poly.length;i++)idx.push(i);
+  if(area2(poly)<0)idx.reverse();
+  const tris=[];let guard=0;
+  while(idx.length>3&&guard++<40000){
+    let cut=false;
+    for(let i=0;i<idx.length;i++){
+      const L=idx.length,i0=idx[(i-1+L)%L],i1=idx[i],i2=idx[(i+1)%L];
+      const a=poly[i0],b=poly[i1],c=poly[i2];
+      if((b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0])<=1e-10)continue;
+      let ok=true;
+      for(let k=0;k<idx.length;k++){
+        const j=idx[k];
+        if(j===i0||j===i1||j===i2)continue;
+        if(ptInTri(poly[j],a,b,c)){ok=false;break;}
+      }
+      if(ok){tris.push([a,b,c]);idx.splice(i,1);cut=true;break;}
+    }
+    if(!cut)break;
+  }
+  if(idx.length===3)tris.push([poly[idx[0]],poly[idx[1]],poly[idx[2]]]);
+  return tris;
+}
+function rectTris(x0,y0,x1,y1){return [[[x0,y0],[x1,y0],[x1,y1]],[[x0,y0],[x1,y1],[x0,y1]]];}
+function squareRingTris(cx,cy,r,half,n){
+  const sq=a=>{const c=Math.cos(a),s=Math.sin(a),m=Math.max(Math.abs(c),Math.abs(s));
+    return [cx+c/m*half,cy+s/m*half];};
+  const t=[];
+  for(let i=0;i<n;i++){
+    const a0=2*Math.PI*i/n,a1=2*Math.PI*(i+1)/n;
+    const p0=[cx+Math.cos(a0)*r,cy+Math.sin(a0)*r];
+    const p1=[cx+Math.cos(a1)*r,cy+Math.sin(a1)*r];
+    t.push([p0,sq(a0),sq(a1)],[p0,sq(a1),p1]);
+  }
+  return t;
+}
+
+/* ---------------- построение тел ---------------- */
+const V=[],NR=[],E=[];
+function pushTri(p0,p1,p2,n){
+  V.push(p0[0],p0[1],p0[2],p1[0],p1[1],p1[2],p2[0],p2[1],p2[2]);
+  for(let i=0;i<3;i++)NR.push(n[0],n[1],n[2]);
+}
+function pushEdge(a,b){E.push(a[0],a[1],a[2],b[0],b[1],b[2]);}
+/* треугольник с нормалью из векторного произведения; вырожденные пропускаем */
+function tri3(a,b,c){
+  const v=cross(sub(b,a),sub(c,a)),l=Math.hypot(v[0],v[1],v[2]);
+  if(l<1e-9)return;
+  pushTri(a,b,c,[v[0]/l,v[1]/l,v[2]/l]);
+}
+/* лофт: набор сечений (u,v) в позициях x — для участков переменного профиля */
+function loftX(secs,xs){
+  const n=secs[0].length;
+  for(let s=0;s<secs.length-1;s++){
+    const A=secs[s],B=secs[s+1],x0=xs[s],x1=xs[s+1];
+    for(let i=0;i<n;i++){
+      const j=(i+1)%n;
+      tri3([x0,A[i][0],A[i][1]],[x0,A[j][0],A[j][1]],[x1,B[j][0],B[j][1]]);
+      tri3([x0,A[i][0],A[i][1]],[x1,B[j][0],B[j][1]],[x1,B[i][0],B[i][1]]);
+    }
+  }
+}
+function prism(rings,w0,w1,map,capTris){
+  const tris=capTris||earClip(rings[0]);
+  const O=map(0,0,0);
+  const DU=nrm(sub(map(1,0,0),O)),DV=nrm(sub(map(0,1,0),O)),DW=nrm(sub(map(0,0,1),O));
+  [w0,w1].forEach(w=>{
+    const n=(w===w1)?DW:scl(DW,-1);
+    tris.forEach(t=>pushTri(map(t[0][0],t[0][1],w),map(t[1][0],t[1][1],w),map(t[2][0],t[2][1],w),n));
+  });
+  rings.forEach((ring,ri)=>{
+    const R=ring.slice();
+    if(ri===0){if(area2(R)<0)R.reverse();}else{if(area2(R)>0)R.reverse();}
+    const m=R.length;
+    for(let i=0;i<m;i++){
+      const p=R[i],q=R[(i+1)%m],o=R[(i-1+m)%m];
+      const du=q[0]-p[0],dv=q[1]-p[1],l=Math.hypot(du,dv);
+      if(l<1e-9)continue;
+      const nn=nrm(add(scl(DU,dv/l),scl(DV,-du/l)));
+      const A=map(p[0],p[1],w0),B=map(q[0],q[1],w0),C=map(q[0],q[1],w1),D=map(p[0],p[1],w1);
+      pushTri(A,B,C,nn);pushTri(A,C,D,nn);
+      pushEdge(A,B);pushEdge(D,C);
+      const a1=Math.atan2(p[1]-o[1],p[0]-o[0]),a2=Math.atan2(dv,du);
+      let da=a2-a1;
+      while(da>Math.PI)da-=2*Math.PI;
+      while(da<-Math.PI)da+=2*Math.PI;
+      if(Math.abs(da)>0.22)pushEdge(A,D);
+    }
+  });
+}
+
+const T=5,ARC=10;
+const MXZ=(u,v,w)=>[u,w,v];   /* профиль в XZ, вытяжка по Y */
+const MYZ=(u,v,w)=>[w,u,v];   /* профиль в YZ, вытяжка по X */
+
+/* ---- 1. плита основания (между гибами): Y 5..255, Z 0..5, окно 270×210 */
+prism(
+  [[[0,5],[470,5],[470,255],[0,255]],
+   [[100,25],[100,235],[370,235],[370,25]]],
+  0,T,(u,v,w)=>[u,v,w],
+  [].concat(rectTris(0,5,470,25),rectTris(0,235,470,255),
+            rectTris(0,25,100,235),rectTris(370,25,470,235))
+);
+
+/* ---- 2. гибы «основание ↔ боковины», R5 снаружи и внутри */
+/* наружные R5 — идут на всю длину детали */
+prism([arcPts(5,5,5,180,270,ARC).concat([[5,5]])],0,470,MYZ);
+prism([arcPts(255,5,5,270,360,ARC).concat([[255,5]])],0,470,MYZ);
+/* внутренние R5 — по краям их срезает плоскость ската 45°, поэтому сводим на нет */
+function innerFillet(front){
+  const sec=zmax=>{
+    const a=Math.asin(Math.max(-1,Math.min(1,(10-zmax)/5)))*180/Math.PI;
+    return front?[[5,5],[5,zmax]].concat(arcPts(10,10,5,180+a,270,8))
+                :[[255,5],[255,zmax]].concat(arcPts(250,10,5,360-a,270,8));
+  };
+  const xs=[0,1.25,2.5,3.75,5,465,466.25,467.5,468.75,470];
+  const zs=[5,6.25,7.5,8.75,10,10,8.75,7.5,6.25,5];
+  loftX(xs.map((x,i)=>sec(zs[i])),xs);
+  const yA=front?5:255, yB=front?10:250;
+  pushEdge([5,yA,10],[465,yA,10]);
+  pushEdge([5,yB,5],[465,yB,5]);
+}
+innerFillet(true);innerFillet(false);
+
+/* ---- 3. передняя стенка (Y 0..5): трапеция с арочным проёмом */
+const fOut=roundPoly([[0,5,0],[80,85,5],[390,85,5],[470,5,0]],ARC);
+const fIn =roundPoly([[13,10,0],[83,80,5],[387,80,5],[457,10,0]],ARC);
+prism([fOut,fIn],0,T,MXZ,
+  earClip(fOut.concat(fIn.slice().reverse())).concat(
+    [[[0,5],[470,5],[457,10]],[[0,5],[457,10],[13,10]]]));
+
+/* ---- 4. задняя панель (Y 255..260): стойки 40 мм, скругления R25 */
+prism([roundPoly([
+  [0,5,0],[80,85,25],[80,585,0],[120,585,0],[120,85,25],
+  [350,85,25],[350,585,0],[390,585,0],[390,85,25],[470,5,0]
+],ARC)],255,260,MXZ);
+
+/* ---- 5. гибы «стойка ↔ полка», R5 */
+[100,370].forEach(cx=>{
+  prism([arcPts(255,585,5,0,90,ARC).concat([[255,585]])],cx-20,cx+20,MYZ);
+  prism([[[255,585]].concat(arcPts(250,580,5,90,0,ARC))],cx-20,cx+20,MYZ);
+});
+
+/* ---- 6. полки 40×230, Z 585..590, 4× ⌀6,5 */
+[100,370].forEach(cx=>{
+  prism(
+    [[[cx-20,25],[cx+20,25],[cx+20,255],[cx-20,255]],
+     circle(cx,55,3.25,HSEG),
+     circle(cx,225,3.25,HSEG)],
+    585,590,(u,v,w)=>[u,v,w],
+    [].concat(
+      rectTris(cx-20,25,cx+20,35),
+      squareRingTris(cx,55,3.25,20,HSEG),
+      rectTris(cx-20,75,cx+20,205),
+      squareRingTris(cx,225,3.25,20,HSEG),
+      rectTris(cx-20,245,cx+20,255))
+  );
+});
+[[100,55],[100,225],[370,55],[370,225]].forEach(h=>{
+  [585,590].forEach(z=>{
+    const c=circle(h[0],h[1],3.25,HSEG);
+    for(let i=0;i<c.length;i++){
+      const a=c[i],b=c[(i+1)%c.length];
+      pushEdge([a[0],a[1],z],[b[0],b[1],z]);
+    }
+  });
+});
+
+/* ===== граница: дальше идут привариваемые рёбра ===== */
+const SPLIT_V=V.length, SPLIT_E=E.length;
+
+/* ---- 7. рёбра (8 отдельных деталей, приварные) */
+const RIBX=[[80,85],[115,120],[350,355],[385,390]];
+/* вертикальные 5×15, Y 260..275, Z 5..585 — торцы прямые */
+RIBX.forEach(r=>prism([[[260,5],[275,5],[275,585],[260,585]]],r[0],r[1],MYZ,
+  rectTris(260,5,275,585)));
+/* горизонтальные 5×15, Y 25..255, Z 570..585, с вырезом R5 под гиб */
+const hrib=[[25,585]].concat(arcPts(250,580,5,90,0,ARC)).concat([[255,570],[25,570]]);
+RIBX.forEach(r=>prism([hrib],r[0],r[1],MYZ));
+
+const POS=new Float32Array(V.slice(0,SPLIT_V)),NRMA=new Float32Array(NR.slice(0,SPLIT_V));
+const EDG=new Float32Array(E.slice(0,SPLIT_E));
+const RPOS=new Float32Array(V.slice(SPLIT_V)),RNRM=new Float32Array(NR.slice(SPLIT_V));
+const REDG=new Float32Array(E.slice(SPLIT_E));
+
+const G=[];
+for(let x=-100;x<=580;x+=50)G.push(x,-100,0,x,380,0);
+for(let y=-100;y<=380;y+=50)G.push(-100,y,0,580,y,0);
+const GRID=new Float32Array(G);
+
+/* ---------------- темы ---------------- */
+const THEMES={
+  light:{
+    bg1:[0.98,0.99,1.00], bg2:[0.83,0.87,0.92],
+    part:[0.60,0.65,0.71], rib:[0.46,0.55,0.66], amb:0.44,
+    edge:[0.10,0.16,0.23,0.80], grid:[0.55,0.62,0.71,0.75],
+    dim:{overall:'#0b5fc4',base:'#127a41',wall:'#c04a10',top:'#946104',rib:'#7b3fb8'},
+    ext:[1.05,0.85,'2.5 2'],
+    labelBg:'#ffffff', labelTx:'#16202b', axis:['#c0392b','#127a41','#0b5fc4']
+  },
+  dark:{
+    bg1:[0.10,0.14,0.20], bg2:[0.02,0.03,0.05],
+    part:[0.50,0.57,0.66], rib:[0.38,0.50,0.66], amb:0.28,
+    edge:[0.03,0.05,0.08,0.90], grid:[0.16,0.23,0.32,0.85],
+    dim:{overall:'#4cc2ff',base:'#7ee787',wall:'#ff9d7a',top:'#ffc857',rib:'#c58fff'},
+    ext:[0.9,0.7,'2 3'],
+    labelBg:'#0b1119', labelTx:'#ffffff', axis:['#ff6b6b','#7ee787','#4cc2ff']
+  }
+};
+let themeName='light';
+const TH=()=>THEMES[themeName];
+
+/* ---------------- размеры ---------------- */
+const DIMS=[
+ {g:'overall',k:'Длина основания',        a:[0,0,0],     b:[470,0,0],    o:[0,-235,0],  v:'470'},
+ {g:'overall',k:'Ширина основания',       a:[470,0,0],   b:[470,260,0],  o:[140,0,0],   v:'260'},
+ {g:'overall',k:'Габарит по глубине',     a:[470,0,0],   b:[470,275,0],  o:[215,0,0],   v:'275'},
+ {g:'overall',k:'Полная высота',          a:[470,0,0],   b:[470,0,590],  o:[285,-160,0],v:'590'},
+ {g:'overall',k:'Толщина листа',          a:[0,0,0],     b:[0,0,5],      o:[-135,-135,0],v:'5'},
+
+ {g:'base',k:'Окно, длина',               a:[100,25,0],  b:[370,25,0],   o:[0,-60,0],   v:'270'},
+ {g:'base',k:'Окно, ширина',              a:[100,25,0],  b:[100,235,0],  o:[-145,0,0],  v:'210'},
+ {g:'base',k:'Перемычка слева',           a:[0,235,0],   b:[100,235,0],  o:[0,125,0],   v:'100'},
+ {g:'base',k:'Перемычка справа',          a:[370,235,0], b:[470,235,0],  o:[0,125,0],   v:'100'},
+ {g:'base',k:'Перемычка спереди',         a:[100,0,0],   b:[100,25,0],   o:[-215,0,0],  v:'25'},
+ {g:'base',k:'Перемычка сзади',           a:[100,235,0], b:[100,260,0],  o:[-215,0,0],  v:'25'},
+
+ {g:'wall',k:'Высота арки (наружу)',      a:[0,0,0],     b:[0,0,85],     o:[-65,-65,0], v:'85'},
+ {g:'wall',k:'Полка арки сверху',         a:[80,0,85],   b:[390,0,85],   o:[0,-60,75],  v:'310'},
+ {g:'wall',k:'Проём: высота',             a:[235,0,10],  b:[235,0,80],   o:[0,-125,0],  v:'70'},
+ {g:'wall',k:'Проём: низ',                a:[13,0,10],   b:[457,0,10],   o:[0,-180,0],  v:'444'},
+ {g:'wall',k:'Толщина стенки',            a:[82,0,85],   b:[82,5,85],    o:[-60,0,130], v:'5'},
+ {g:'wall',k:'Уклон боковин',             a:[40,0,45],   o:[-95,-95,75], v:'45°',       t:'note'},
+
+ {g:'top',k:'Ширина стойки',              a:[80,260,590],b:[120,260,590],o:[0,110,80],  v:'40'},
+ {g:'top',k:'Просвет между стойками',     a:[120,260,590],b:[350,260,590],o:[0,110,160],v:'230'},
+ {g:'top',k:'Между осями отверстий (X)',  a:[100,25,590],b:[370,25,590], o:[0,-115,25], v:'270'},
+ {g:'top',k:'Длина полки',                a:[80,25,590], b:[80,255,590], o:[-125,0,55], v:'230'},
+ {g:'top',k:'Между отверстиями (Y)',      a:[100,55,590],b:[100,225,590],o:[75,0,55],   v:'170'},
+ {g:'top',k:'Отверстие от торца полки',   a:[100,25,590],b:[100,55,590], o:[-50,0,55],  v:'30'},
+ {g:'top',k:'Ось отверстия от кромки',    a:[80,225,590],b:[100,225,590],o:[0,75,55],   v:'20'},
+ {g:'top',k:'Высота до низа полки',       a:[390,260,5], b:[390,260,585],o:[250,160,0], v:'580'},
+ {g:'top',k:'Толщина полки',              a:[120,25,585],b:[120,25,590], o:[115,-95,0], v:'5'},
+ {g:'top',k:'Крепёжные отверстия',        a:[100,55,590],o:[-90,-90,120],v:'4× ⌀6,5',   t:'note'},
+ {g:'top',k:'Корень стойки снаружи',      a:[78.1,260,85.8], o:[-120,120,95],v:'R25',   t:'note'},
+ {g:'top',k:'Корень стойки внутри',       a:[127.3,260,92.3],o:[75,95,115],  v:'R25',   t:'note'},
+ {g:'top',k:'Радиус гибов',               a:[390,5,85],  o:[95,-95,85],  v:'R5',        t:'note'},
+
+ {g:'rib',k:'Вертикальное ребро: вылет',  a:[80,260,420],b:[80,275,420], o:[-70,0,95],  v:'15'},
+ {g:'rib',k:'Вертикальное ребро: длина',  a:[80,275,5],  b:[80,275,585], o:[-175,115,0],v:'580'},
+ {g:'rib',k:'Толщина ребра',              a:[80,275,300],b:[85,275,300], o:[0,80,85],   v:'5'},
+ {g:'rib',k:'Горизонт. ребро: высота',    a:[120,25,570],b:[120,25,585], o:[185,-130,0],v:'15'},
+ {g:'rib',k:'Горизонт. ребро: длина',     a:[120,25,570],b:[120,255,570],o:[185,0,-90], v:'230'},
+ {g:'rib',k:'Всего рёбер',                a:[385,275,300],o:[130,130,90],v:'8 шт. (сварка)',t:'note'},
+ {g:'rib',k:'Вырез под гиб',              a:[120,252,582],o:[150,-60,90], v:'R5',       t:'note'}
+];
+
+/* ---------------- WebGL ---------------- */
+const cv=document.getElementById('cv');
+const gl=cv.getContext('webgl',{antialias:true,alpha:false});
+function sh(t,s){const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);
+  if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(o));return o;}
+function prog(vs,fs){const p=gl.createProgram();
+  gl.attachShader(p,sh(gl.VERTEX_SHADER,vs));gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs));
+  gl.linkProgram(p);return p;}
+
+const pBg=prog(
+"attribute vec2 aP;varying vec2 vUv;void main(){vUv=aP*0.5+0.5;gl_Position=vec4(aP,0.999,1.0);}",
+"precision mediump float;varying vec2 vUv;uniform vec3 uA;uniform vec3 uB;"+
+"void main(){float d=clamp(distance(vUv,vec2(0.60,0.86))*1.15,0.0,1.0);"+
+"gl_FragColor=vec4(mix(uA,uB,d*d),1.0);}");
+
+const pSolid=prog(
+"attribute vec3 aP;attribute vec3 aN;uniform mat4 uMVP;varying vec3 vN;varying vec3 vW;"+
+"void main(){vN=aN;vW=aP;gl_Position=uMVP*vec4(aP,1.0);}",
+"precision mediump float;varying vec3 vN;varying vec3 vW;"+
+"uniform vec3 uCam;uniform vec3 uCol;uniform float uA;uniform float uAmb;"+
+"void main(){"+
+"vec3 N=normalize(vN);vec3 Vw=normalize(uCam-vW);"+
+"if(dot(N,Vw)<0.0)N=-N;"+
+"vec3 L1=normalize(vec3(0.45,-0.85,0.95));"+
+"vec3 L2=normalize(vec3(-0.75,0.55,0.25));"+
+"float d=max(dot(N,L1),0.0)*0.62+max(dot(N,L2),0.0)*0.30;"+
+"vec3 H=normalize(L1+Vw);"+
+"float sp=pow(max(dot(N,H),0.0),46.0)*0.40;"+
+"float fr=pow(1.0-max(dot(N,Vw),0.0),3.0)*0.22;"+
+"vec3 c=uCol*(uAmb+d)+vec3(sp)+vec3(0.30,0.45,0.68)*fr;"+
+"gl_FragColor=vec4(c,uA);}");
+
+const pLine=prog(
+"attribute vec3 aP;uniform mat4 uMVP;void main(){gl_Position=uMVP*vec4(aP,1.0);}",
+"precision mediump float;uniform vec4 uCol;void main(){gl_FragColor=uCol;}");
+
+function buf(d){const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);
+  gl.bufferData(gl.ARRAY_BUFFER,d,gl.STATIC_DRAW);return b;}
+const bP=buf(POS),bN=buf(NRMA),bE=buf(EDG);
+const bRP=buf(RPOS),bRN=buf(RNRM),bRE=buf(REDG);
+const bG=buf(GRID),bQ=buf(new Float32Array([-1,-1, 3,-1, -1,3]));
+
+/* ---------------- камера ---------------- */
+let CENTER=[235,130,250];
+const FOV=38*Math.PI/180;
+const cam={th:-1.03,ph:1.03,d:1500,pan:[0,0,0]};
+let spin=false,showEdges=false,ghost=false,showGrid=true,showRibs=true;
+const groups={overall:false,base:false,wall:false,top:false,rib:false};
+let MVP=null,CP=null,W=0,H=0;
+
+const target=()=>add(CENTER,cam.pan);
+function camPos(){
+  const t=cam.th,p=cam.ph;
+  return add(target(),scl([Math.sin(p)*Math.cos(t),Math.sin(p)*Math.sin(t),Math.cos(p)],cam.d));
+}
+function basis(){
+  const fwd=nrm(sub(target(),camPos()));
+  const right=nrm(cross(fwd,[0,0,1]));
+  return {fwd:fwd,right:right,up:cross(right,fwd)};
+}
+const mmPerPx=()=>2*cam.d*Math.tan(FOV/2)/Math.max(H,1);
+function cursorPoint(mx,my){
+  const b=basis(),k=mmPerPx();
+  return add(target(),add(scl(b.right,(mx-W/2)*k),scl(b.up,(H/2-my)*k)));
+}
+function resize(){
+  const r=cv.getBoundingClientRect(),dpr=Math.min(window.devicePixelRatio||1,2);
+  W=r.width||window.innerWidth||1200;
+  H=r.height||window.innerHeight||800;
+  cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);
+  gl.viewport(0,0,cv.width,cv.height);
+  document.getElementById('svg').setAttribute('viewBox','0 0 '+W+' '+H);
+}
+function fit(){
+  resize();
+  const mn=[1e9,1e9,1e9],mx=[-1e9,-1e9,-1e9];
+  const acc=p=>{for(let i=0;i<3;i++){if(p[i]<mn[i])mn[i]=p[i];if(p[i]>mx[i])mx[i]=p[i];}};
+  acc([0,0,0]);acc([470,275,590]);
+  DIMS.forEach(d=>{
+    if(!groups[d.g])return;
+    acc(add(d.a,d.o));
+    if(d.b)acc(add(d.b,d.o));
+  });
+  CENTER=[(mn[0]+mx[0])/2,(mn[1]+mx[1])/2,(mn[2]+mx[2])/2];
+  const R=0.5*Math.hypot(mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2]);
+  const ar=(W>0&&H>0)?W/H:1.4;
+  const hfov=2*Math.atan(Math.tan(FOV/2)*Math.max(ar,0.3));
+  let d=Math.max(R/Math.tan(FOV/2),R/Math.tan(hfov/2))*0.85;
+  if(!isFinite(d)||d<=0)d=1600;
+  cam.d=d;cam.pan=[0,0,0];
+}
+
+function drawSolid(bp,bn,cnt,col,th){
+  gl.uniform3fv(gl.getUniformLocation(pSolid,'uCol'),new Float32Array(col));
+  const ap=gl.getAttribLocation(pSolid,'aP'),an=gl.getAttribLocation(pSolid,'aN');
+  gl.bindBuffer(gl.ARRAY_BUFFER,bp);gl.enableVertexAttribArray(ap);gl.vertexAttribPointer(ap,3,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ARRAY_BUFFER,bn);gl.enableVertexAttribArray(an);gl.vertexAttribPointer(an,3,gl.FLOAT,false,0,0);
+  gl.drawArrays(gl.TRIANGLES,0,cnt);
+}
+function drawLines(b,cnt,col){
+  gl.useProgram(pLine);
+  gl.uniformMatrix4fv(gl.getUniformLocation(pLine,'uMVP'),false,MVP);
+  gl.uniform4fv(gl.getUniformLocation(pLine,'uCol'),new Float32Array(col));
+  const a=gl.getAttribLocation(pLine,'aP');
+  gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.enableVertexAttribArray(a);
+  gl.vertexAttribPointer(a,3,gl.FLOAT,false,0,0);
+  gl.drawArrays(gl.LINES,0,cnt);
+}
+
+function draw(){
+  resize();
+  const th=TH();
+  CP=camPos();
+  const near=Math.max(0.6,cam.d*0.012),far=cam.d*12+4000;
+  MVP=M4.mul(M4.persp(FOV,W/H,near,far),M4.look(CP,target(),[0,0,1]));
+
+  gl.disable(gl.DEPTH_TEST);gl.disable(gl.BLEND);
+  gl.useProgram(pBg);
+  gl.uniform3fv(gl.getUniformLocation(pBg,'uA'),new Float32Array(th.bg1));
+  gl.uniform3fv(gl.getUniformLocation(pBg,'uB'),new Float32Array(th.bg2));
+  const aq=gl.getAttribLocation(pBg,'aP');
+  gl.bindBuffer(gl.ARRAY_BUFFER,bQ);gl.enableVertexAttribArray(aq);
+  gl.vertexAttribPointer(aq,2,gl.FLOAT,false,0,0);
+  gl.drawArrays(gl.TRIANGLES,0,3);
+  gl.disableVertexAttribArray(aq);
+
+  gl.clear(gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST);gl.disable(gl.CULL_FACE);
+
+  if(showGrid){
+    gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+    drawLines(bG,GRID.length/3,th.grid);
+  }
+
+  gl.useProgram(pSolid);
+  gl.uniformMatrix4fv(gl.getUniformLocation(pSolid,'uMVP'),false,MVP);
+  gl.uniform3fv(gl.getUniformLocation(pSolid,'uCam'),new Float32Array(CP));
+  gl.uniform1f(gl.getUniformLocation(pSolid,'uAmb'),th.amb);
+  gl.uniform1f(gl.getUniformLocation(pSolid,'uA'),ghost?0.36:1.0);
+  if(ghost){gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(false);}
+  else{gl.disable(gl.BLEND);gl.depthMask(true);}
+  gl.enable(gl.POLYGON_OFFSET_FILL);gl.polygonOffset(1.2,2.0);
+  drawSolid(bP,bN,POS.length/3,th.part,th);
+  if(showRibs)drawSolid(bRP,bRN,RPOS.length/3,th.rib,th);
+  gl.disable(gl.POLYGON_OFFSET_FILL);gl.depthMask(true);
+
+  if(showEdges){
+    const e=th.edge.slice();if(ghost)e[3]*=0.55;
+    gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+    drawLines(bE,EDG.length/3,e);
+    if(showRibs)drawLines(bRE,REDG.length/3,e);
+  }
+  drawDims();
+}
+
+function proj2(p){
+  const m=MVP;
+  const x=m[0]*p[0]+m[4]*p[1]+m[8]*p[2]+m[12];
+  const y=m[1]*p[0]+m[5]*p[1]+m[9]*p[2]+m[13];
+  const w=m[3]*p[0]+m[7]*p[1]+m[11]*p[2]+m[15];
+  if(!(w>0.001))return null;
+  const sx=(x/w*0.5+0.5)*W,sy=(1-(y/w*0.5+0.5))*H;
+  if(!isFinite(sx)||!isFinite(sy))return null;
+  return {x:sx,y:sy};
+}
+
+/* ---------------- размеры (SVG) ---------------- */
+const svg=document.getElementById('svg');
+let hiIdx=-1;
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+function arrow(p,dx,dy,c){
+  const s=7.5,w=2.7,a=Math.atan2(dy,dx);
+  const x1=p.x+Math.cos(a)*s,y1=p.y+Math.sin(a)*s;
+  const nx=-Math.sin(a)*w,ny=Math.cos(a)*w;
+  return '<path d="M'+p.x.toFixed(1)+' '+p.y.toFixed(1)+'L'+(x1+nx).toFixed(1)+' '+(y1+ny).toFixed(1)+
+         'L'+(x1-nx).toFixed(1)+' '+(y1-ny).toFixed(1)+'Z" fill="'+c+'"/>';
+}
+function label(x,y,ang,txt,c,hi){
+  const th=TH(),fs=hi?13.5:12.5,w=String(txt).length*fs*0.63+11,h=fs+7;
+  return '<g transform="translate('+x.toFixed(1)+','+y.toFixed(1)+') rotate('+ang.toFixed(1)+')">'+
+    '<rect x="'+(-w/2).toFixed(1)+'" y="'+(-h/2).toFixed(1)+'" width="'+w.toFixed(1)+'" height="'+h.toFixed(1)+
+    '" rx="3" fill="'+(hi?c:th.labelBg)+'" fill-opacity="'+(hi?1:0.94)+'" stroke="'+c+
+    '" stroke-opacity="'+(hi?1:0.55)+'"/>'+
+    '<text x="0" y="'+(fs*0.36).toFixed(1)+'" text-anchor="middle" font-family="Consolas,monospace" '+
+    'font-size="'+fs+'" font-weight="'+(hi?700:500)+'" fill="'+(hi?th.labelBg:c)+'">'+esc(txt)+'</text></g>';
+}
+function triad(){
+  const th=TH(),c=proj2(CENTER);
+  if(!c)return '';
+  const ox=64,oy=H-64;
+  let s='<g opacity="0.95">';
+  [[90,0,0,'X',0],[0,90,0,'Y',1],[0,0,90,'Z',2]].forEach(a=>{
+    const p=proj2(add(CENTER,[a[0],a[1],a[2]]));if(!p)return;
+    const col=th.axis[a[4]],dx=p.x-c.x,dy=p.y-c.y,l=Math.hypot(dx,dy)||1,k=34/l;
+    s+='<line x1="'+ox+'" y1="'+oy+'" x2="'+(ox+dx*k).toFixed(1)+'" y2="'+(oy+dy*k).toFixed(1)+
+       '" stroke="'+col+'" stroke-width="2"/>'+
+       '<text x="'+(ox+dx*k*1.3).toFixed(1)+'" y="'+(oy+dy*k*1.3+4).toFixed(1)+
+       '" text-anchor="middle" font-size="11" font-family="Consolas,monospace" fill="'+col+'">'+a[3]+'</text>';
+  });
+  return s+'</g>';
+}
+function drawDims(){
+  const CD=TH().dim,EX=TH().ext;
+  let s='';
+  DIMS.forEach((d,i)=>{
+    if(!groups[d.g])return;
+    const c=CD[d.g],hi=(i===hiIdx),op=hi?1:0.92,lw=hi?2:1.2;
+    if(d.t==='note'){
+      const P=proj2(d.a),Q=proj2(add(d.a,d.o));
+      if(!P||!Q)return;
+      const sx=Q.x+(Q.x>P.x?26:-26);
+      s+='<path d="M'+P.x.toFixed(1)+' '+P.y.toFixed(1)+'L'+Q.x.toFixed(1)+' '+Q.y.toFixed(1)+
+         'L'+sx.toFixed(1)+' '+Q.y.toFixed(1)+'" fill="none" stroke="'+c+'" stroke-width="'+lw+
+         '" opacity="'+op+'"/><circle cx="'+P.x.toFixed(1)+'" cy="'+P.y.toFixed(1)+
+         '" r="2.8" fill="'+c+'" opacity="'+op+'"/>';
+      s+=label((Q.x+sx)/2,Q.y-10,0,d.v,c,hi);
+      return;
+    }
+    const A=proj2(d.a),B=proj2(d.b),QA=proj2(add(d.a,d.o)),QB=proj2(add(d.b,d.o));
+    if(!A||!B||!QA||!QB)return;
+    const ex=(P,Q)=>{const dx=Q.x-P.x,dy=Q.y-P.y,l=Math.hypot(dx,dy)||1;return{x:Q.x+dx/l*7,y:Q.y+dy/l*7};};
+    const EA=ex(A,QA),EB=ex(B,QB);
+    s+='<path d="M'+A.x.toFixed(1)+' '+A.y.toFixed(1)+'L'+EA.x.toFixed(1)+' '+EA.y.toFixed(1)+
+       'M'+B.x.toFixed(1)+' '+B.y.toFixed(1)+'L'+EB.x.toFixed(1)+' '+EB.y.toFixed(1)+
+       '" fill="none" stroke="'+c+'" stroke-width="'+(EX[0]*(hi?1.5:1)).toFixed(2)+
+       '" opacity="'+(hi?1:EX[1])+'" stroke-dasharray="'+EX[2]+'"/>';
+    s+='<path d="M'+QA.x.toFixed(1)+' '+QA.y.toFixed(1)+'L'+QB.x.toFixed(1)+' '+QB.y.toFixed(1)+
+       '" fill="none" stroke="'+c+'" stroke-width="'+lw+'" opacity="'+op+'"/>';
+    const dx=QB.x-QA.x,dy=QB.y-QA.y,l=Math.hypot(dx,dy)||1;
+    s+=arrow(QA,dx/l,dy/l,c)+arrow(QB,-dx/l,-dy/l,c);
+    let ang=Math.atan2(dy,dx)*180/Math.PI;
+    if(ang>90)ang-=180;
+    if(ang<-90)ang+=180;
+    s+=label((QA.x+QB.x)/2,(QA.y+QB.y)/2,ang,d.v,c,hi);
+  });
+  svg.innerHTML=s+triad();
+}
+
+/* ---------------- навигация ---------------- */
+let drag=null;
+function localXY(e){const r=cv.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top];}
+cv.addEventListener('pointerdown',e=>{
+  cv.setPointerCapture(e.pointerId);
+  const pan=(e.button===1||e.button===2||e.shiftKey||e.ctrlKey);
+  drag={x:e.clientX,y:e.clientY,pan:pan};
+  cv.classList.add(pan?'mov':'rot');
+  e.preventDefault();
+});
+cv.addEventListener('pointermove',e=>{
+  if(!drag)return;
+  const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
+  drag.x=e.clientX;drag.y=e.clientY;
+  if(drag.pan){
+    const b=basis(),k=mmPerPx();
+    cam.pan=add(cam.pan,add(scl(b.right,-dx*k),scl(b.up,dy*k)));
+  }else{
+    cam.th-=dx*0.0065;
+    cam.ph=Math.max(0.05,Math.min(Math.PI-0.05,cam.ph-dy*0.0065));
+  }
+  draw();
+});
+function endDrag(){drag=null;cv.classList.remove('rot','mov');}
+window.addEventListener('pointerup',endDrag);
+window.addEventListener('pointercancel',endDrag);
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+cv.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const xy=localXY(e);
+  const P=cursorPoint(xy[0],xy[1]);
+  const oldD=cam.d;
+  cam.d=Math.max(40,Math.min(9000,cam.d*Math.pow(1.12,e.deltaY>0?1:-1)));
+  cam.pan=add(cam.pan,scl(sub(P,target()),1-cam.d/oldD));
+  draw();
+},{passive:false});
+
+/* ---------------- UI ---------------- */
+const VIEWS={
+  iso:{th:-1.03,ph:1.03}, front:{th:-Math.PI/2,ph:Math.PI/2}, back:{th:Math.PI/2,ph:Math.PI/2},
+  side:{th:0,ph:Math.PI/2}, top:{th:-Math.PI/2,ph:0.03}
+};
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{
+  const v=VIEWS[b.dataset.view];
+  cam.th=v.th;cam.ph=v.ph;
+  fit();draw();
+});
+document.getElementById('bFit').onclick=()=>{fit();draw();};
+function tg(id,fn){
+  const b=document.getElementById(id);
+  b.onclick=()=>{b.classList.toggle('on');fn(b.classList.contains('on'));draw();};
+}
+tg('bRibs',v=>{showRibs=v;});
+tg('bEdges',v=>{showEdges=v;});
+tg('bGhost',v=>{ghost=v;});
+tg('bGrid',v=>{showGrid=v;});
+tg('bSpin',v=>{spin=v;if(v)loop();});
+function loop(){if(!spin)return;cam.th+=0.0045;draw();requestAnimationFrame(loop);}
+
+const bTheme=document.getElementById('bTheme');
+bTheme.onclick=()=>{
+  themeName=(themeName==='light')?'dark':'light';
+  document.body.classList.toggle('dark',themeName==='dark');
+  bTheme.classList.toggle('on',themeName==='dark');
+  bTheme.textContent=(themeName==='dark')?'Светлая тема':'Тёмная тема';
+  paintSwatches();buildList();draw();
+};
+function paintSwatches(){
+  const CD=TH().dim;
+  Object.keys(CD).forEach(g=>{
+    const el=document.getElementById('sw-'+g);
+    if(el)el.style.background=CD[g];
+  });
+}
+document.querySelectorAll('[data-g]').forEach(c=>c.onchange=()=>{
+  groups[c.dataset.g]=c.checked;buildList();draw();
+});
+document.getElementById('toggle').onclick=()=>document.getElementById('panel').classList.toggle('open');
+
+/* ---------------- список ---------------- */
+const GN={overall:'Габариты',base:'Основание',wall:'Стенки / арка',top:'Стойки и полки',rib:'Рёбра (сварка)'};
+function buildList(){
+  const CD=TH().dim,el=document.getElementById('list');
+  let h='';
+  ['overall','base','wall','top','rib'].forEach(g=>{
+    const items=[];
+    DIMS.forEach((d,i)=>{if(d.g===g)items.push({d:d,i:i});});
+    if(!items.length)return;
+    h+='<div class="grp" style="color:'+CD[g]+'">'+GN[g]+(groups[g]?'':' · скрыто')+'</div>';
+    items.forEach(o=>{
+      h+='<div class="row" data-i="'+o.i+'"><span class="k">'+esc(o.d.k)+
+         '</span><span class="v" style="color:'+CD[g]+'">'+esc(o.d.v)+'</span></div>';
+    });
+  });
+  h+='<div class="grp" style="color:var(--tx2)">Состав</div><div class="note">'+
+     '<b>1</b> — гнутая деталь, лист s5<br>'+
+     '<b>4</b> — вертикальных ребра 5×15×580, сзади стоек<br>'+
+     '<b>4</b> — горизонтальных ребра 5×15×230, под полками<br><br>'+
+     'Рёбра на X 80…85, 115…120, 350…355, 385…390 — по кромкам стоек и полок.'+
+     '</div><div class="note">'+
+     '<span class="kbd">ЛКМ</span> поворот · <span class="kbd">ПКМ</span> / '+
+     '<span class="kbd">Shift</span>+ЛКМ сдвиг · <span class="kbd">колесо</span> зум к курсору<br>'+
+     'Наведите на строку — размер подсветится на модели.'+
+     '</div>';
+  el.innerHTML=h;
+  el.querySelectorAll('.row').forEach(r=>{
+    r.onmouseenter=()=>{hiIdx=+r.dataset.i;draw();};
+    r.onmouseleave=()=>{hiIdx=-1;draw();};
+  });
+}
+paintSwatches();
+buildList();
+window.addEventListener('resize',draw);
+fit();
+draw();
+requestAnimationFrame(()=>{fit();draw();});
+</script>
+</body>
+</html>
